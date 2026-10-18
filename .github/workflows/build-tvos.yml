@@ -1,0 +1,81 @@
+name: Build tvOS (unsigned)
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [master]
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: macos-14
+    timeout-minutes: 90
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: yarn
+
+      - name: Toolchain info
+        run: |
+          node -v
+          yarn -v
+          xcodebuild -version
+          xcrun --sdk appletvos --show-sdk-version
+
+      - name: Install JS dependencies
+        run: yarn install --frozen-lockfile
+
+      - name: Expo prebuild (tvOS)
+        run: EXPO_TV=1 yarn prebuild
+        env:
+          CI: "1"
+
+      - name: List Xcode schemes
+        run: |
+          cd ios
+          xcodebuild -list -workspace OrionTV.xcworkspace
+
+      - name: Build tvOS app (unsigned)
+        run: |
+          cd ios
+          SCHEME=$(xcodebuild -list -workspace OrionTV.xcworkspace -json 2>/dev/null \
+            | python3 -c "import json,sys; d=json.load(sys.stdin); print(d['workspace']['schemes'][0])" 2>/dev/null \
+            || echo OrionTV)
+          echo "SCHEME=$SCHEME"
+          xcodebuild \
+            -workspace OrionTV.xcworkspace \
+            -scheme "$SCHEME" \
+            -configuration Release \
+            -sdk appletvos \
+            -destination 'generic/platform=tvOS' \
+            -derivedDataPath build \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            | tee build.log | tail -100
+
+      - name: Package unsigned IPA
+        run: |
+          APP=$(find ios/build/Build/Products -name '*.app' -type d | head -1)
+          echo "APP=$APP"
+          test -n "$APP"
+          rm -rf Payload
+          mkdir Payload
+          cp -R "$APP" Payload/
+          zip -r OrionTV-tvos-unsigned.ipa Payload
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: OrionTV-tvos-unsigned
+          path: |
+            OrionTV-tvos-unsigned.ipa
+            ios/build.log
+          if-no-files-found: error
