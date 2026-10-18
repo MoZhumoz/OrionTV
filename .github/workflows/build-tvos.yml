@@ -45,9 +45,7 @@ jobs:
       - name: Build tvOS app (unsigned)
         run: |
           cd ios
-          SCHEME=$(xcodebuild -list -workspace OrionTV.xcworkspace -json 2>/dev/null \
-            | python3 -c "import json,sys; d=json.load(sys.stdin); print(d['workspace']['schemes'][0])" 2>/dev/null \
-            || echo OrionTV)
+          SCHEME=OrionTV
           echo "SCHEME=$SCHEME"
           xcodebuild \
             -workspace OrionTV.xcworkspace \
